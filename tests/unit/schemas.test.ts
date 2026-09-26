@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { analysisSchema, evidenceCitationSchema, qaSchema, uploadValidationSchema } from "@/lib/validation/schemas";
+import {
+  analysisSchema,
+  documentRefSchema,
+  evidenceCitationSchema,
+  qaSchema,
+  uploadValidationSchema,
+} from "@/lib/validation/schemas";
 import { DEMO_ANALYSIS, answerDemoQuestion } from "@/lib/demo/sample-data";
 
 const validEvidence = { page: 3, section: "4.2", quote: "some quote", available: true };
@@ -74,6 +80,49 @@ describe("qaSchema", () => {
     const { question, ...rest } = answer;
     void question;
     expect(qaSchema.safeParse(rest).success).toBe(true);
+  });
+});
+
+describe("documentRefSchema", () => {
+  it("accepts a valid Gemini Files API reference", () => {
+    const result = documentRefSchema.safeParse({
+      kind: "file",
+      uri: "https://generativelanguage.googleapis.com/v1beta/files/abc123",
+      mimeType: "application/pdf",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a valid inline (Vertex AI) reference", () => {
+    const result = documentRefSchema.safeParse({
+      kind: "inline",
+      base64: "JVBERi0xLjQK",
+      mimeType: "application/pdf",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a file reference pointing at an untrusted host", () => {
+    const result = documentRefSchema.safeParse({
+      kind: "file",
+      uri: "https://evil.example.com/files/abc123",
+      mimeType: "application/pdf",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an oversized inline payload", () => {
+    const result = documentRefSchema.safeParse({
+      kind: "inline",
+      base64: "A".repeat(30 * 1024 * 1024),
+      mimeType: "application/pdf",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a missing/undefined doc", () => {
+    expect(documentRefSchema.safeParse(undefined).success).toBe(false);
+    expect(documentRefSchema.safeParse(null).success).toBe(false);
   });
 });
 

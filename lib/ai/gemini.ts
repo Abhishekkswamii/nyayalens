@@ -1,13 +1,49 @@
 import { GoogleGenAI } from "@google/genai";
 import type { ZodSchema } from "zod";
 import { SYSTEM_INSTRUCTIONS } from "@/lib/ai/prompts";
+import { redactSecrets } from "@/lib/security/sanitize";
+
+/** Logs only the error type/message (never document content or the API key itself). */
+function logAiError(context: string, err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`[gemini:${context}]`, redactSecrets(message));
+}
+
+function isTransientError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /"code":\s*(503|429)|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand/i.test(message);
+}
+
+/** Retries a transient (503/429, "high demand") Gemini error with backoff; anything else fails fast. */
+async function withTransientRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isTransientError(err) || attempt === attempts - 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 600 * 2 ** attempt));
+    }
+  }
+  throw lastErr;
+}
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 function getClient(): GoogleGenAI {
+  const project = process.env.GOOGLE_CLOUD_PROJECT;
+  const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+
+  if (project) {
+    return new GoogleGenAI({ vertexai: true, project, location });
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new AiConfigError("GEMINI_API_KEY is not configured on the server.");
+    throw new AiConfigError(
+      "Either GOOGLE_CLOUD_PROJECT (for Vertex AI) or GEMINI_API_KEY must be configured.",
+    );
   }
   return new GoogleGenAI({ apiKey });
 }
@@ -16,22 +52,41 @@ export class AiConfigError extends Error {}
 export class AiRequestError extends Error {}
 export class AiOutputError extends Error {}
 
-export interface UploadedDoc {
-  uri: string;
-  mimeType: string;
+/**
+ * A reference to a document already handed to the AI backend, used for the
+ * initial analysis call and reused for follow-up Q&A/comparison calls
+ * without re-sending the file bytes over our own network each time.
+ *
+ * - "file": the direct Gemini API's Files API (a URI Google hosts for us).
+ * - "inline": Vertex AI, which does not support the Files API without a GCS
+ *   bucket — the bytes are kept server-side (see lib/ai/session-store.ts)
+ *   and sent inline with each call instead.
+ */
+export type DocumentRef =
+  | { kind: "file"; uri: string; mimeType: string }
+  | { kind: "inline"; base64: string; mimeType: string };
+
+export function isVertexMode(): boolean {
+  return Boolean(process.env.GOOGLE_CLOUD_PROJECT);
 }
 
-/** Uploads a PDF once via the Files API so it can be referenced (by URI) across
- * analysis, Q&A and comparison calls without re-sending the bytes each time. */
-export async function uploadPdf(bytes: Uint8Array, displayName: string): Promise<UploadedDoc> {
+/** Uploads a PDF once (Files API on the direct Gemini API) or holds it inline
+ * (Vertex AI) so it can be reused across analysis, Q&A and comparison calls. */
+export async function prepareDocument(bytes: Uint8Array, displayName: string): Promise<DocumentRef> {
+  if (isVertexMode()) {
+    return { kind: "inline", base64: Buffer.from(bytes).toString("base64"), mimeType: "application/pdf" };
+  }
+
   const client = getClient();
   const blob = new Blob([bytes.slice().buffer], { type: "application/pdf" });
 
   try {
-    const uploaded = await client.files.upload({
-      file: blob,
-      config: { mimeType: "application/pdf", displayName },
-    });
+    const uploaded = await withTransientRetry(() =>
+      client.files.upload({
+        file: blob,
+        config: { mimeType: "application/pdf", displayName },
+      }),
+    );
 
     let file = uploaded;
     let attempts = 0;
@@ -46,11 +101,18 @@ export async function uploadPdf(bytes: Uint8Array, displayName: string): Promise
       throw new AiRequestError("The document could not be processed by the AI service.");
     }
 
-    return { uri: file.uri, mimeType: file.mimeType || "application/pdf" };
+    return { kind: "file", uri: file.uri, mimeType: file.mimeType || "application/pdf" };
   } catch (err) {
     if (err instanceof AiRequestError) throw err;
+    logAiError("prepareDocument", err);
     throw new AiRequestError("Failed to upload the document to the AI service.");
   }
+}
+
+function documentPart(doc: DocumentRef) {
+  return doc.kind === "file"
+    ? { fileData: { fileUri: doc.uri, mimeType: doc.mimeType } }
+    : { inlineData: { data: doc.base64, mimeType: doc.mimeType } };
 }
 
 function extractJsonText(raw: string): string {
@@ -67,16 +129,20 @@ async function generateStructured<T>(params: {
   const client = getClient();
 
   const call = async (contents: unknown[]) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const response = await (client.models.generateContent as any)({
-      model: MODEL,
-      contents,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTIONS,
-        responseMimeType: "application/json",
-        temperature: 0.2,
-      },
-    });
+    const response = await withTransientRetry<{ text?: string }>(() =>
+      // The installed @google/genai types don't yet expose this call signature; the
+      // request/response shape is documented and validated below via the text field.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (client.models.generateContent as any)({
+        model: MODEL,
+        contents,
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTIONS,
+          responseMimeType: "application/json",
+          temperature: 0.2,
+        },
+      }),
+    );
     const text: string | undefined = response.text;
     if (!text) {
       throw new AiRequestError("The AI service returned an empty response.");
@@ -89,6 +155,7 @@ async function generateStructured<T>(params: {
     raw = await call(params.contents);
   } catch (err) {
     if (err instanceof AiRequestError) throw err;
+    logAiError("generateContent", err);
     throw new AiRequestError("The AI service request failed. Please try again.");
   }
 
@@ -128,7 +195,7 @@ async function generateStructured<T>(params: {
 }
 
 export async function generateAnalysis<T>(
-  doc: UploadedDoc,
+  doc: DocumentRef,
   prompt: string,
   schema: ZodSchema<T>,
 ): Promise<T> {
@@ -136,7 +203,7 @@ export async function generateAnalysis<T>(
     contents: [
       {
         role: "user",
-        parts: [{ fileData: { fileUri: doc.uri, mimeType: doc.mimeType } }, { text: prompt }],
+        parts: [documentPart(doc), { text: prompt }],
       },
     ],
     schema,
@@ -145,7 +212,7 @@ export async function generateAnalysis<T>(
 }
 
 export async function generateAnswer<T>(
-  doc: UploadedDoc,
+  doc: DocumentRef,
   prompt: string,
   schema: ZodSchema<T>,
 ): Promise<T> {
@@ -153,7 +220,7 @@ export async function generateAnswer<T>(
     contents: [
       {
         role: "user",
-        parts: [{ fileData: { fileUri: doc.uri, mimeType: doc.mimeType } }, { text: prompt }],
+        parts: [documentPart(doc), { text: prompt }],
       },
     ],
     schema,
@@ -162,8 +229,8 @@ export async function generateAnswer<T>(
 }
 
 export async function generateComparison<T>(
-  docA: UploadedDoc,
-  docB: UploadedDoc,
+  docA: DocumentRef,
+  docB: DocumentRef,
   prompt: string,
   schema: ZodSchema<T>,
 ): Promise<T> {
@@ -173,9 +240,9 @@ export async function generateComparison<T>(
         role: "user",
         parts: [
           { text: "Document A:" },
-          { fileData: { fileUri: docA.uri, mimeType: docA.mimeType } },
+          documentPart(docA),
           { text: "Document B:" },
-          { fileData: { fileUri: docB.uri, mimeType: docB.mimeType } },
+          documentPart(docB),
           { text: prompt },
         ],
       },

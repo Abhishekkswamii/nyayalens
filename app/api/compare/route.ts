@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateComparison, uploadPdf } from "@/lib/ai/gemini";
+import { generateComparison, prepareDocument } from "@/lib/ai/gemini";
 import { buildComparisonPrompt } from "@/lib/ai/prompts";
 import { validateFileMetadata, validatePdfMagicBytes } from "@/lib/document/validate";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
@@ -51,8 +51,8 @@ export async function POST(request: NextRequest) {
     }
 
     const [docA, docB] = await Promise.all([
-      uploadPdf(bytesA, fileA.name),
-      uploadPdf(bytesB, fileB.name),
+      prepareDocument(bytesA, fileA.name),
+      prepareDocument(bytesB, fileB.name),
     ]);
 
     const aiResult = await generateComparison(docA, docB, buildComparisonPrompt(), comparisonSchema);

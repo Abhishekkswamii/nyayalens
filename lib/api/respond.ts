@@ -9,7 +9,7 @@ export function errorResponse(message: string, status: number) {
 export function handleApiError(err: unknown) {
   if (err instanceof AiConfigError) {
     return errorResponse(
-      "Live AI mode is not configured on this server. Try demo mode, or set GEMINI_API_KEY.",
+      "Live AI mode is not configured on this server. Try demo mode, or set GEMINI_API_KEY (or GOOGLE_CLOUD_PROJECT for Vertex AI).",
       503,
     );
   }
@@ -20,12 +20,6 @@ export function handleApiError(err: unknown) {
     return errorResponse("The AI response could not be validated. Please try again.", 502);
   }
   return errorResponse("Something went wrong while processing your request.", 500);
-}
-
-const GEMINI_FILE_URI_PREFIX = "https://generativelanguage.googleapis.com/";
-
-export function isValidGeminiFileUri(uri: unknown): uri is string {
-  return typeof uri === "string" && uri.startsWith(GEMINI_FILE_URI_PREFIX);
 }
 
 let counter = 0;

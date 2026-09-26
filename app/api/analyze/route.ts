@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateAnalysis, uploadPdf } from "@/lib/ai/gemini";
+import { generateAnalysis, prepareDocument } from "@/lib/ai/gemini";
 import { buildAnalysisPrompt } from "@/lib/ai/prompts";
 import { validateFileMetadata, validatePdfMagicBytes } from "@/lib/document/validate";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const doc = await uploadPdf(bytes, file.name);
+    const doc = await prepareDocument(bytes, file.name);
     const aiResult = await generateAnalysis(doc, buildAnalysisPrompt(), analysisSchema);
 
     const analysis: DocumentAnalysis = {

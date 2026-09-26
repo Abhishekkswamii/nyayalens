@@ -1,9 +1,9 @@
 import type { DocumentAnalysis } from "@/lib/types";
-import type { UploadedDocRef } from "@/lib/client/session-context";
+import type { ClientDocumentRef } from "@/lib/client/session-context";
 
 export interface AnalyzeSuccess {
   analysis: DocumentAnalysis;
-  doc: UploadedDocRef;
+  doc: ClientDocumentRef;
 }
 
 export async function analyzeDocument(file: File): Promise<AnalyzeSuccess> {

@@ -31,3 +31,6 @@ next-env.d.ts
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# Google Cloud SA Key
+nyayalens-key.json

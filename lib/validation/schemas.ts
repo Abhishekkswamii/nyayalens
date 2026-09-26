@@ -1,5 +1,27 @@
 import { z } from "zod";
 
+const GEMINI_FILE_URI_PREFIX = "https://generativelanguage.googleapis.com/";
+const MAX_INLINE_BASE64_LENGTH = Math.ceil((16 * 1024 * 1024 * 4) / 3); // ~16 MB decoded, base64-inflated
+
+/**
+ * A reference to an already-uploaded document, round-tripped through the
+ * client between /api/analyze and follow-up /api/ask /api/compare calls (see
+ * lib/ai/gemini.ts's DocumentRef). Bounded so a client can't smuggle an
+ * oversized payload in under the "inline" variant.
+ */
+export const documentRefSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("file"),
+    uri: z.string().startsWith(GEMINI_FILE_URI_PREFIX),
+    mimeType: z.literal("application/pdf"),
+  }),
+  z.object({
+    kind: z.literal("inline"),
+    base64: z.string().max(MAX_INLINE_BASE64_LENGTH),
+    mimeType: z.literal("application/pdf"),
+  }),
+]);
+
 export const concernLevelSchema = z.enum(["high", "medium", "low", "info"]);
 export const confidenceSchema = z.enum(["high", "medium", "low"]);
 

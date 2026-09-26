@@ -38,8 +38,9 @@ export default function SettingsPage() {
             <dt className="font-semibold text-ink">What this app stores</dt>
             <dd className="mt-1 text-muted">
               NyayaLens itself does not persist your document or analysis in a database — the analysis
-              is kept only in your browser&apos;s session storage for this browser tab. The uploaded PDF is
-              held temporarily by Google&apos;s Gemini Files API (subject to Google&apos;s own retention policy,
+              and a reference to your document are kept only in your browser&apos;s session storage for
+              this browser tab. Depending on how the server is configured, the uploaded PDF may be held
+              temporarily by Google&apos;s Gemini Files API (subject to Google&apos;s own retention policy,
               typically up to 48 hours) so follow-up questions can reference it without re-uploading.
             </dd>
           </div>

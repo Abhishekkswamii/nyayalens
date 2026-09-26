@@ -1,15 +1,19 @@
 import type { QuestionAnswer } from "@/lib/types";
-import type { UploadedDocRef } from "@/lib/client/session-context";
+import type { ClientDocumentRef } from "@/lib/client/session-context";
 
 export async function askQuestion(params: {
   question: string;
   isDemo: boolean;
-  doc: UploadedDocRef | null;
+  doc: ClientDocumentRef | null;
 }): Promise<QuestionAnswer> {
   const response = await fetch("/api/ask", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question: params.question, isDemo: params.isDemo, doc: params.doc }),
+    body: JSON.stringify({
+      question: params.question,
+      isDemo: params.isDemo,
+      doc: params.doc,
+    }),
   });
 
   const body = await response.json().catch(() => ({}));

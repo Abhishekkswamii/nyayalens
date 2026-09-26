@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateAnswer } from "@/lib/ai/gemini";
 import { buildQAPrompt } from "@/lib/ai/prompts";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
-import { qaSchema } from "@/lib/validation/schemas";
-import { errorResponse, handleApiError, isValidGeminiFileUri } from "@/lib/api/respond";
+import { documentRefSchema, qaSchema } from "@/lib/validation/schemas";
+import { errorResponse, handleApiError } from "@/lib/api/respond";
 import { sanitizeText } from "@/lib/security/sanitize";
 import { answerDemoQuestion } from "@/lib/demo/sample-data";
 import type { QuestionAnswer } from "@/lib/types";
@@ -14,7 +14,7 @@ export const maxDuration = 30;
 interface AskBody {
   question: string;
   isDemo?: boolean;
-  doc?: { uri: string; mimeType: string };
+  doc?: unknown;
 }
 
 export async function POST(request: NextRequest) {
@@ -44,12 +44,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ answer });
   }
 
-  if (!body.doc || !isValidGeminiFileUri(body.doc.uri)) {
-    return errorResponse("No analyzed document was found for this session. Please upload a document first.", 400);
+  const docParse = documentRefSchema.safeParse(body.doc);
+  if (!docParse.success) {
+    return errorResponse(
+      "No analyzed document was found for this session. Please upload a document first.",
+      400,
+    );
   }
 
   try {
-    const aiResult = await generateAnswer(body.doc, buildQAPrompt(question), qaSchema);
+    const aiResult = await generateAnswer(docParse.data, buildQAPrompt(question), qaSchema);
     const answer: QuestionAnswer = { ...aiResult, question };
     return NextResponse.json({ answer });
   } catch (err) {

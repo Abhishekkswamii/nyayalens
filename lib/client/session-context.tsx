@@ -4,19 +4,19 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { DocumentAnalysis } from "@/lib/types";
 import { DEMO_ANALYSIS } from "@/lib/demo/sample-data";
 
-export interface UploadedDocRef {
-  uri: string;
-  mimeType: string;
-}
+/** Mirrors lib/ai/gemini.ts's DocumentRef, kept separate so client code never
+ * imports the server-only AI module (which reads process.env secrets). */
+export type ClientDocumentRef =
+  | { kind: "file"; uri: string; mimeType: string }
+  | { kind: "inline"; base64: string; mimeType: string };
 
 interface SessionState {
   analysis: DocumentAnalysis | null;
-  doc: UploadedDocRef | null;
-  compareA: { name: string } | null;
+  doc: ClientDocumentRef | null;
 }
 
 interface DocumentSessionValue extends SessionState {
-  setAnalysis: (analysis: DocumentAnalysis, doc: UploadedDocRef | null) => void;
+  setAnalysis: (analysis: DocumentAnalysis, doc: ClientDocumentRef) => void;
   loadDemo: () => void;
   clear: () => void;
 }
@@ -26,7 +26,7 @@ const STORAGE_KEY = "nyayalens.session.v1";
 const DocumentSessionContext = createContext<DocumentSessionValue | null>(null);
 
 export function DocumentSessionProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<SessionState>({ analysis: null, doc: null, compareA: null });
+  const [state, setState] = useState<SessionState>({ analysis: null, doc: null });
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -51,16 +51,16 @@ export function DocumentSessionProvider({ children }: { children: React.ReactNod
     }
   }, [state, hydrated]);
 
-  const setAnalysis = useCallback((analysis: DocumentAnalysis, doc: UploadedDocRef | null) => {
-    setState({ analysis, doc, compareA: null });
+  const setAnalysis = useCallback((analysis: DocumentAnalysis, doc: ClientDocumentRef) => {
+    setState({ analysis, doc });
   }, []);
 
   const loadDemo = useCallback(() => {
-    setState({ analysis: DEMO_ANALYSIS, doc: null, compareA: null });
+    setState({ analysis: DEMO_ANALYSIS, doc: null });
   }, []);
 
   const clear = useCallback(() => {
-    setState({ analysis: null, doc: null, compareA: null });
+    setState({ analysis: null, doc: null });
     try {
       window.sessionStorage.removeItem(STORAGE_KEY);
     } catch {
