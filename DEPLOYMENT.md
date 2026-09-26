@@ -1,5 +1,7 @@
 # Deployment (Vercel)
 
+**Live deployment:** https://nyayalens-roan.vercel.app (production, linked to this repo's `main` branch — pushes auto-deploy).
+
 NyayaLens is a standard Next.js App Router project with no persistent filesystem dependency, so it deploys to Vercel without special configuration.
 
 ## Prerequisites

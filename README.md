@@ -2,6 +2,8 @@
 
 **Understand. Verify. Decide.**
 
+**Live:** https://nyayalens-roan.vercel.app
+
 NyayaLens turns a complex legal document (PDF) into plain-language clauses, obligations, rights, and prioritized concerns — every substantive claim backed by evidence from the document itself. It also answers grounded questions about the document and compares two documents side by side.
 
 It is an **informational assistant, not a lawyer**, and it says so throughout the product.

@@ -12,7 +12,7 @@ const sourceSerif = Source_Serif_4({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://nyayalens.vercel.app"),
+  metadataBase: new URL("https://nyayalens-roan.vercel.app"),
   title: {
     default: "NyayaLens — Understand Before You Sign",
     template: "%s · NyayaLens",
