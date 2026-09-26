@@ -49,7 +49,7 @@ export function buildAnalysisPrompt(): string {
 Analyze the attached PDF legal document and extract a structured analysis.
 
 Identify:
-- Document metadata: type, parties, effective date, duration, jurisdiction (only if explicitly stated).
+- Document metadata: type, parties, effective date, duration, jurisdiction (only if explicitly stated). List at most the 10 most significant named parties; if the document names more (e.g. a multi-defendant complaint), summarize the rest as a single entry such as "and 12 additional defendants" rather than listing every name.
 - Key clauses (aim for 8-15): title, category, original text (verbatim, short excerpt), plain-English meaning, why it matters, concern level (high/medium/low/info), evidence (page/section/quote), confidence, and one recommended question a person could bring to a lawyer about it.
 - Obligations for each party: what they must do, timing/deadline if stated, consequence if stated in the document, and evidence.
 - Rights/entitlements explicitly stated for each party, with evidence.

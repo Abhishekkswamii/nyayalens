@@ -9,7 +9,7 @@ import { answerDemoQuestion } from "@/lib/demo/sample-data";
 import type { QuestionAnswer } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 interface AskBody {
   question: string;

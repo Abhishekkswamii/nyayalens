@@ -145,7 +145,7 @@ GEMINI_MODEL=gemini-2.5-flash   # optional; defaults to gemini-2.5-flash if unse
 ```bash
 npm run typecheck   # tsc --noEmit
 npm run lint        # eslint
-npm run test        # vitest (unit + integration, 49 tests)
+npm run test        # vitest (unit + integration, 51 tests)
 npm run test:e2e    # playwright (E2E + accessibility, 26 tests across desktop/mobile)
 npm run test:all    # typecheck + test + test:e2e
 npm run build       # production build
@@ -178,3 +178,4 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md).
 - This is a single-region, in-memory rate limiter appropriate for a single Vercel deployment — not a distributed rate-limiting solution.
 - On Vertex AI, the document is sent inline (base64) with the initial upload's browser response and resent on every follow-up call, since Vertex's Gemini endpoint has no Files API equivalent without a separate GCS bucket; this is bounded by the existing 15 MB file cap but is less efficient than the direct API's file-reuse path, and holds more data in the browser's `sessionStorage` for that tab.
 - `GEMINI_MODEL` availability differs between the direct Gemini API and Vertex AI (a model enabled on one may 404 on the other, or be deprecated for new API keys on one but not the other) — verify your chosen model against the backend you're using.
+- Full document analysis of a real, content-dense PDF can take 30-90+ seconds (extended model "thinking" is explicitly disabled via `thinkingConfig.thinkingBudget: 0` to keep this as fast as possible for a structured-extraction task, and transient `503`/`429` errors are retried with backoff). `/api/analyze` and `/api/compare` set `maxDuration = 120`; Vercel's Hobby plan hard-caps serverless functions at 60 seconds regardless of this setting, so a slow analysis can time out (504) on Hobby even though it would succeed on Pro (up to 300s) or with Fluid Compute. If you see intermittent 504s on a complex document, this is why.

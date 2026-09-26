@@ -140,6 +140,10 @@ async function generateStructured<T>(params: {
           systemInstruction: SYSTEM_INSTRUCTIONS,
           responseMimeType: "application/json",
           temperature: 0.2,
+          // This is a structured-extraction task, not open-ended reasoning: extended
+          // "thinking" adds significant latency for no accuracy benefit here, and on
+          // Vercel risks exceeding the serverless function's execution time limit.
+          thinkingConfig: { thinkingBudget: 0 },
         },
       }),
     );
@@ -163,8 +167,17 @@ async function generateStructured<T>(params: {
     try {
       const json = JSON.parse(extractJsonText(text));
       const parsed = params.schema.safeParse(json);
-      return parsed.success ? parsed.data : null;
-    } catch {
+      if (!parsed.success) {
+        // Diagnostic only: logs which fields failed and why, never the document/model content itself.
+        console.error(
+          "[gemini:validation]",
+          parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(" | "),
+        );
+        return null;
+      }
+      return parsed.data;
+    } catch (err) {
+      console.error("[gemini:json-parse]", err instanceof Error ? err.message : String(err));
       return null;
     }
   };

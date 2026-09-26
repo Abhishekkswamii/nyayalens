@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   analysisSchema,
+  documentMetadataSchema,
   documentRefSchema,
   evidenceCitationSchema,
   qaSchema,
@@ -80,6 +81,32 @@ describe("qaSchema", () => {
     const { question, ...rest } = answer;
     void question;
     expect(qaSchema.safeParse(rest).success).toBe(true);
+  });
+});
+
+describe("documentMetadataSchema", () => {
+  it("accepts a real multi-party document (e.g. a complaint naming many defendants)", () => {
+    const parties = Array.from({ length: 11 }, (_, i) => `Party ${i + 1}`);
+    const result = documentMetadataSchema.safeParse({
+      documentType: "Complaint",
+      parties,
+      effectiveDate: null,
+      duration: null,
+      jurisdiction: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("still rejects a runaway/unbounded parties list", () => {
+    const parties = Array.from({ length: 100 }, (_, i) => `Party ${i + 1}`);
+    const result = documentMetadataSchema.safeParse({
+      documentType: "Complaint",
+      parties,
+      effectiveDate: null,
+      duration: null,
+      jurisdiction: null,
+    });
+    expect(result.success).toBe(false);
   });
 });
 

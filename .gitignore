@@ -34,3 +34,6 @@ next-env.d.ts
 
 # Google Cloud SA Key
 nyayalens-key.json
+
+# Claude Code harness-local state (not part of the app)
+.claude/

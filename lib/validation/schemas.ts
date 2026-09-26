@@ -85,7 +85,7 @@ export const riskFindingSchema = z.object({
 
 export const documentMetadataSchema = z.object({
   documentType: z.string().min(1).max(120),
-  parties: z.array(z.string().max(200)).max(10),
+  parties: z.array(z.string().max(200)).max(40),
   effectiveDate: z.string().max(60).nullable(),
   duration: z.string().max(120).nullable(),
   jurisdiction: z.string().max(120).nullable(),

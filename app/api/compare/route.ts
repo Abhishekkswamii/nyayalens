@@ -8,7 +8,7 @@ import { errorResponse, handleApiError } from "@/lib/api/respond";
 import type { ComparisonResult } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
   const clientKey = getClientKey(request);
