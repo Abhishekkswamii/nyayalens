@@ -1,4 +1,5 @@
-import type { ComparisonResult, DocumentAnalysis, QuestionAnswer } from "@/lib/types";
+import type { ComparisonResult, DocumentAnalysis, LegalClause, QuestionAnswer } from "@/lib/types";
+import { computeRiskSummary } from "@/lib/ai/derive";
 
 /**
  * Tiny synthetic sample data for demo mode. Not a real contract, no real
@@ -7,21 +8,7 @@ import type { ComparisonResult, DocumentAnalysis, QuestionAnswer } from "@/lib/t
 export const DEMO_SESSION_ID = "demo-session";
 export const DEMO_FILE_NAME = "Sample Employment Agreement (Demo).pdf";
 
-export const DEMO_ANALYSIS: DocumentAnalysis = {
-  sessionId: DEMO_SESSION_ID,
-  fileName: DEMO_FILE_NAME,
-  pageCount: 6,
-  fileSizeBytes: 182_000,
-  metadata: {
-    documentType: "Employment Agreement",
-    parties: ["Employee (Demo)", "ABC Technologies Pvt. Ltd. (Demo)"],
-    effectiveDate: "1 January 2024",
-    duration: "12 months, with a 3-month probation period",
-    jurisdiction: "India (as stated in the sample document)",
-  },
-  summary:
-    "This is a synthetic sample employment agreement between a demo employee and a demo company. It outlines role, compensation, a three-month probation period, confidentiality obligations, intellectual-property assignment, a post-employment non-compete, and termination terms. This is demo data, not a real contract.",
-  clauses: [
+const DEMO_CLAUSES: LegalClause[] = [
     {
       id: "c1",
       title: "Employment Term",
@@ -134,7 +121,23 @@ export const DEMO_ANALYSIS: DocumentAnalysis = {
       confidence: "high",
       recommendedQuestion: "What are the costs and location of the arbitration process described here?",
     },
-  ],
+];
+
+export const DEMO_ANALYSIS: DocumentAnalysis = {
+  sessionId: DEMO_SESSION_ID,
+  fileName: DEMO_FILE_NAME,
+  pageCount: 6,
+  fileSizeBytes: 182_000,
+  metadata: {
+    documentType: "Employment Agreement",
+    parties: ["Employee (Demo)", "ABC Technologies Pvt. Ltd. (Demo)"],
+    effectiveDate: "1 January 2024",
+    duration: "12 months, with a 3-month probation period",
+    jurisdiction: "India (as stated in the sample document)",
+  },
+  summary:
+    "This is a synthetic sample employment agreement between a demo employee and a demo company. It outlines role, compensation, a three-month probation period, confidentiality obligations, intellectual-property assignment, a post-employment non-compete, and termination terms. This is demo data, not a real contract.",
+  clauses: DEMO_CLAUSES,
   obligations: [
     {
       id: "o1",
@@ -223,14 +226,12 @@ export const DEMO_ANALYSIS: DocumentAnalysis = {
       evidence: { page: 5, section: "8.1", quote: "...and if unresolved, to binding arbitration.", available: true },
     },
   ],
-  riskSummary: {
-    totalClauses: 8,
-    high: 3,
-    medium: 4,
-    low: 1,
-    keyTakeaway:
-      "This sample agreement contains high-concern clauses mainly related to intellectual property assignment and post-employment restrictions — worth discussing with a professional before signing.",
-  },
+  // Computed from DEMO_CLAUSES, exactly as production does — never hand-maintained
+  // duplicate counts that could silently drift from the actual clause list.
+  riskSummary: computeRiskSummary(
+    DEMO_CLAUSES,
+    "This sample agreement contains high-concern clauses mainly related to intellectual property assignment and post-employment restrictions — worth discussing with a professional before signing.",
+  ),
   suggestedQuestions: [
     { id: "q1", question: "Can my employer terminate me immediately?" },
     { id: "q2", question: "What are my key obligations in this agreement?" },

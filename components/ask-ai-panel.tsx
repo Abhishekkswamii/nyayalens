@@ -112,8 +112,9 @@ export function AskAiPanel({ compact = false }: { compact?: boolean }) {
           {answer.suggestedNextQuestion && (
             <button
               type="button"
+              disabled={loading}
               onClick={() => submit(answer.suggestedNextQuestion!)}
-              className="focus-ring block w-full rounded-md border border-dashed border-border px-3 py-2 text-left text-xs text-gold-dark hover:bg-surface"
+              className="focus-ring block w-full rounded-md border border-dashed border-border px-3 py-2 text-left text-xs text-gold-dark hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
             >
               Suggested next question: {answer.suggestedNextQuestion}
             </button>
@@ -129,8 +130,9 @@ export function AskAiPanel({ compact = false }: { compact?: boolean }) {
               <li key={sq.id}>
                 <button
                   type="button"
+                  disabled={loading}
                   onClick={() => submit(sq.question)}
-                  className="focus-ring flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm text-ink hover:bg-surface-secondary"
+                  className="focus-ring flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm text-ink hover:bg-surface-secondary disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {sq.question} <span aria-hidden="true">→</span>
                 </button>

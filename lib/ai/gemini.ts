@@ -9,7 +9,8 @@ function logAiError(context: string, err: unknown) {
   console.error(`[gemini:${context}]`, redactSecrets(message));
 }
 
-function isTransientError(err: unknown): boolean {
+/** Exported for unit testing the retry classification without mocking the SDK. */
+export function isTransientError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return /"code":\s*(503|429)|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand/i.test(message);
 }
@@ -51,16 +52,20 @@ function getClient(): GoogleGenAI {
 export class AiConfigError extends Error {}
 export class AiRequestError extends Error {}
 export class AiOutputError extends Error {}
+/** Thrown before any network call — a fast, free rejection, not an AI failure. */
+export class DocumentTooLargeForBackendError extends Error {}
 
 /**
  * A reference to a document already handed to the AI backend, used for the
  * initial analysis call and reused for follow-up Q&A/comparison calls
  * without re-sending the file bytes over our own network each time.
  *
- * - "file": the direct Gemini API's Files API (a URI Google hosts for us).
- * - "inline": Vertex AI, which does not support the Files API without a GCS
- *   bucket — the bytes are kept server-side (see lib/ai/session-store.ts)
- *   and sent inline with each call instead.
+ * - "file": the direct Gemini API's Files API (a URI Google hosts for us) —
+ *   the client only ever round-trips this small reference, never the PDF.
+ * - "inline": Vertex AI, which has no Files API without a separate GCS
+ *   bucket, so the document travels inline (base64) with every request —
+ *   see MAX_INLINE_FILE_SIZE_BYTES below for why this path is size-capped
+ *   much more tightly.
  */
 export type DocumentRef =
   | { kind: "file"; uri: string; mimeType: string }
@@ -70,10 +75,30 @@ export function isVertexMode(): boolean {
   return Boolean(process.env.GOOGLE_CLOUD_PROJECT);
 }
 
+/**
+ * Vercel serverless functions hard-cap request/response bodies at 4.5 MB.
+ * Inline mode round-trips the document as base64 (both in the /api/analyze
+ * response and every follow-up /api/ask /api/compare request), so it must
+ * stay well under that once base64's ~1.37x inflation and the surrounding
+ * JSON payload are accounted for. Exported and pure (no network/SDK calls)
+ * so it's directly unit-testable.
+ */
+export const MAX_INLINE_FILE_SIZE_BYTES = 3 * 1024 * 1024;
+
+export function assertInlineSizeAllowed(byteLength: number): void {
+  if (byteLength > MAX_INLINE_FILE_SIZE_BYTES) {
+    throw new DocumentTooLargeForBackendError(
+      `This file is too large for the currently configured AI backend (Vertex AI inline mode supports files up to ${Math.floor(MAX_INLINE_FILE_SIZE_BYTES / (1024 * 1024))} MB, since the document has no Files API equivalent there and must travel with each request). Use a smaller file, or configure the direct Gemini API (GEMINI_API_KEY) for files up to 15 MB.`,
+    );
+  }
+}
+
 /** Uploads a PDF once (Files API on the direct Gemini API) or holds it inline
  * (Vertex AI) so it can be reused across analysis, Q&A and comparison calls. */
 export async function prepareDocument(bytes: Uint8Array, displayName: string): Promise<DocumentRef> {
   if (isVertexMode()) {
+    // Reject oversized inputs before spending any CPU/tokens encoding or sending them.
+    assertInlineSizeAllowed(bytes.byteLength);
     return { kind: "inline", base64: Buffer.from(bytes).toString("base64"), mimeType: "application/pdf" };
   }
 

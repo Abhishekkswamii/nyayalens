@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateAnswer } from "@/lib/ai/gemini";
 import { buildQAPrompt } from "@/lib/ai/prompts";
+import { timed } from "@/lib/dev/perf";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
 import { documentRefSchema, qaSchema } from "@/lib/validation/schemas";
 import { errorResponse, handleApiError } from "@/lib/api/respond";
@@ -53,7 +54,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const aiResult = await generateAnswer(docParse.data, buildQAPrompt(question), qaSchema);
+    const aiResult = await timed("generateAnswer", () =>
+      generateAnswer(docParse.data, buildQAPrompt(question), qaSchema),
+    );
     const answer: QuestionAnswer = { ...aiResult, question };
     return NextResponse.json({ answer });
   } catch (err) {

@@ -30,7 +30,7 @@ describe("AI output validation (defense against malformed model output)", () => 
       obligations: [],
       rights: [],
       risks: [],
-      riskSummary: { totalClauses: 1, high: 0, medium: 0, low: 1, keyTakeaway: "ok" },
+      riskSummary: { keyTakeaway: "ok" },
       suggestedQuestions: [],
       lawyerPrep: [],
     };
@@ -43,8 +43,8 @@ describe("AI output validation (defense against malformed model output)", () => 
     expect(analysisSchema.safeParse([]).success).toBe(false);
   });
 
-  it("rejects an oversized clause list beyond the sanity cap", () => {
-    const tooMany = Array.from({ length: 61 }, (_, i) => ({
+  it("rejects an oversized clause list beyond the 25-clause cap", () => {
+    const tooMany = Array.from({ length: 26 }, (_, i) => ({
       id: `c${i}`,
       title: "Clause",
       category: "general",
@@ -65,7 +65,7 @@ describe("AI output validation (defense against malformed model output)", () => 
       obligations: [],
       rights: [],
       risks: [],
-      riskSummary: { totalClauses: 61, high: 0, medium: 0, low: 61, keyTakeaway: "ok" },
+      riskSummary: { keyTakeaway: "ok" },
       suggestedQuestions: [],
       lawyerPrep: [],
     };

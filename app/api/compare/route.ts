@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateComparison, prepareDocument } from "@/lib/ai/gemini";
 import { buildComparisonPrompt } from "@/lib/ai/prompts";
 import { validateFileMetadata, validatePdfMagicBytes } from "@/lib/document/validate";
+import { timed } from "@/lib/dev/perf";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
 import { comparisonSchema } from "@/lib/validation/schemas";
 import { errorResponse, handleApiError } from "@/lib/api/respond";
@@ -50,12 +51,13 @@ export async function POST(request: NextRequest) {
       return errorResponse("One of the files does not appear to be a valid PDF.", 400);
     }
 
-    const [docA, docB] = await Promise.all([
-      prepareDocument(bytesA, fileA.name),
-      prepareDocument(bytesB, fileB.name),
-    ]);
+    const [docA, docB] = await timed("prepareDocument (both)", () =>
+      Promise.all([prepareDocument(bytesA, fileA.name), prepareDocument(bytesB, fileB.name)]),
+    );
 
-    const aiResult = await generateComparison(docA, docB, buildComparisonPrompt(), comparisonSchema);
+    const aiResult = await timed("generateComparison", () =>
+      generateComparison(docA, docB, buildComparisonPrompt(), comparisonSchema),
+    );
 
     const result: ComparisonResult = {
       documentAName: fileA.name,

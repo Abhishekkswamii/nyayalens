@@ -1,8 +1,32 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { POST as askRoute } from "@/app/api/ask/route";
-import { POST as analyzeRoute } from "@/app/api/analyze/route";
+
+// Spy on the AI client without breaking `instanceof` checks elsewhere (e.g.
+// lib/api/respond.ts matching error classes) by keeping every real export
+// and only wrapping the network-calling functions. These spies exist purely
+// to prove that invalid input and demo-mode requests never reach the model
+// — a real, testable efficiency guarantee, not just an assertion in prose.
+vi.mock("@/lib/ai/gemini", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/ai/gemini")>("@/lib/ai/gemini");
+  return {
+    ...actual,
+    prepareDocument: vi.fn(),
+    generateAnalysis: vi.fn(),
+    generateAnswer: vi.fn(),
+    generateComparison: vi.fn(),
+  };
+});
+
+const gemini = await import("@/lib/ai/gemini");
+const askModule = await import("@/app/api/ask/route");
+const analyzeModule = await import("@/app/api/analyze/route");
+const askRoute = askModule.POST;
+const analyzeRoute = analyzeModule.POST;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function jsonRequest(url: string, body: unknown) {
   return new NextRequest(url, {
@@ -23,21 +47,24 @@ describe("POST /api/ask", () => {
     const body = await response.json();
     expect(body.answer.grounded).toBe(true);
     expect(body.answer.evidence.length).toBeGreaterThan(0);
+    expect(gemini.generateAnswer).not.toHaveBeenCalled();
   });
 
-  it("rejects an empty question", async () => {
+  it("rejects an empty question before any AI call", async () => {
     const request = jsonRequest("http://localhost/api/ask", { question: "", isDemo: true });
     const response = await askRoute(request);
     expect(response.status).toBe(400);
+    expect(gemini.generateAnswer).not.toHaveBeenCalled();
   });
 
-  it("rejects a live request with no document session", async () => {
+  it("rejects a live request with no document session before any AI call", async () => {
     const request = jsonRequest("http://localhost/api/ask", {
       question: "What is this?",
       isDemo: false,
     });
     const response = await askRoute(request);
     expect(response.status).toBe(400);
+    expect(gemini.generateAnswer).not.toHaveBeenCalled();
   });
 
   it("rejects malformed JSON bodies", async () => {
@@ -67,6 +94,8 @@ describe("POST /api/analyze", () => {
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.error).toMatch(/PDF/i);
+    expect(gemini.prepareDocument).not.toHaveBeenCalled();
+    expect(gemini.generateAnalysis).not.toHaveBeenCalled();
   });
 
   it("rejects a file whose content is not actually a PDF despite the extension", async () => {
@@ -77,5 +106,7 @@ describe("POST /api/analyze", () => {
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.error).toMatch(/valid PDF/i);
+    expect(gemini.prepareDocument).not.toHaveBeenCalled();
+    expect(gemini.generateAnalysis).not.toHaveBeenCalled();
   });
 });

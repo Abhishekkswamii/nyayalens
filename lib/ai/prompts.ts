@@ -50,13 +50,13 @@ Analyze the attached PDF legal document and extract a structured analysis.
 
 Identify:
 - Document metadata: type, parties, effective date, duration, jurisdiction (only if explicitly stated). List at most the 10 most significant named parties; if the document names more (e.g. a multi-defendant complaint), summarize the rest as a single entry such as "and 12 additional defendants" rather than listing every name.
-- Key clauses (aim for 8-15): title, category, original text (verbatim, short excerpt), plain-English meaning, why it matters, concern level (high/medium/low/info), evidence (page/section/quote), confidence, and one recommended question a person could bring to a lawyer about it.
-- Obligations for each party: what they must do, timing/deadline if stated, consequence if stated in the document, and evidence.
-- Rights/entitlements explicitly stated for each party, with evidence.
-- Risk findings: the most important potential concerns, each linked to a clause id if applicable.
-- A risk summary: counts of high/medium/low clauses and one key takeaway sentence.
-- 5-6 suggested questions a reader might want answered.
-- 3-6 "lawyer prep" items: topics/questions worth raising with a professional before signing.
+- Key clauses (aim for 8-15, never more than 25): title, category, original text (verbatim, short excerpt), plain-English meaning, why it matters, concern level (high/medium/low/info), evidence (page/section/quote), confidence, and one recommended question a person could bring to a lawyer about it.
+- Obligations for each party (up to 25): what they must do, timing/deadline if stated, consequence if stated in the document, and evidence.
+- Rights/entitlements explicitly stated for each party (up to 20), with evidence.
+- Risk findings (up to 20): the most important potential concerns, each linked to a clause id if applicable.
+- A risk summary: one key takeaway sentence only — do not compute or report clause counts here, the application derives those itself from your clause list.
+- 5-8 suggested questions a reader might want answered.
+- 3-8 "lawyer prep" items: topics/questions worth raising with a professional before signing.
 
 Concern levels describe how much attention a clause may deserve, not a legal
 verdict. Do not fabricate page numbers, sections, or quotes — if a fact is
@@ -70,7 +70,7 @@ Return ONLY JSON matching this exact shape (no markdown fences, no prose):
   "obligations": [{ "id": string, "party": string, "obligation": string, "timing": string, "consequence": string, "evidence": { "page": number|null, "section": string|null, "quote": string|null, "available": boolean } }],
   "rights": [{ "id": string, "party": string, "description": string, "evidence": { "page": number|null, "section": string|null, "quote": string|null, "available": boolean } }],
   "risks": [{ "id": string, "clauseId": string|null, "title": string, "concernLevel": "high"|"medium"|"low"|"info", "explanation": string, "evidence": { "page": number|null, "section": string|null, "quote": string|null, "available": boolean } }],
-  "riskSummary": { "totalClauses": number, "high": number, "medium": number, "low": number, "keyTakeaway": string },
+  "riskSummary": { "keyTakeaway": string },
   "suggestedQuestions": [{ "id": string, "question": string }],
   "lawyerPrep": [{ "id": string, "topic": string, "question": string, "relatedClauseId": string|null }]
 }

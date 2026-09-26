@@ -63,7 +63,7 @@ describe("analysisSchema", () => {
       obligations: [],
       rights: [],
       risks: [],
-      riskSummary: { totalClauses: 1, high: 0, medium: 0, low: 1, keyTakeaway: "ok" },
+      riskSummary: { keyTakeaway: "ok" },
       suggestedQuestions: [],
       lawyerPrep: [],
     };

@@ -63,7 +63,7 @@ flowchart LR
 NyayaLens supports two Gemini backends, chosen automatically by which environment variables are set (see `.env.example`):
 
 - **Direct Gemini API** (`GEMINI_API_KEY`) — the PDF is uploaded once via the Files API; the returned `fileUri` is reused for follow-up Q&A/comparison calls instead of re-sending the file bytes.
-- **Vertex AI** (`GOOGLE_CLOUD_PROJECT` + Application Default Credentials) — Vertex AI's Gemini endpoint does not support the Files API without a separate GCS bucket, so the document is instead sent as an inline base64 part. This avoids adding a GCS/storage dependency for a hackathon-scale app, at the cost of resending the (size-capped, ≤15 MB) document bytes on each follow-up call in this mode.
+- **Vertex AI** (`GOOGLE_CLOUD_PROJECT` + Application Default Credentials) — Vertex AI's Gemini endpoint does not support the Files API without a separate GCS bucket, so the document is instead sent as an inline base64 part, size-capped to 3 MB (see Efficiency Architecture below) to stay well under Vercel's 4.5 MB function payload limit once base64 inflation is accounted for. This avoids adding a GCS/storage dependency for a hackathon-scale app, at the cost of resending the document bytes on each follow-up call in this mode and a tighter file-size limit than the direct API's 15 MB.
 
 In both cases, NyayaLens keeps **no server-side session store**: the validated analysis and its document reference (a Files API URI, or the inline base64 payload) are returned to the browser and held only in that tab's `sessionStorage`, then sent back on follow-up requests. This was a deliberate correction during testing — an earlier version kept an in-memory `Map` on the server keyed by session id, which works in a single long-lived process but silently breaks on Vercel, where `/api/analyze` and `/api/ask` can run as entirely separate serverless function instances with no shared memory. The document reference itself is validated server-side on every request (`lib/validation/schemas.ts`'s `documentRefSchema`) — a `file` reference must point at Google's own API host, and an `inline` payload is capped well under the upload size limit, so a client can't smuggle an oversized or arbitrary payload through it.
 
@@ -147,7 +147,7 @@ GEMINI_MODEL=gemini-2.5-flash   # optional; defaults to gemini-2.5-flash if unse
 ```bash
 npm run typecheck   # tsc --noEmit
 npm run lint        # eslint
-npm run test        # vitest (unit + integration, 51 tests)
+npm run test        # vitest (unit + integration + component, 64 tests)
 npm run test:e2e    # playwright (E2E + accessibility, 26 tests across desktop/mobile)
 npm run test:all    # typecheck + test + test:e2e
 npm run build       # production build
@@ -156,17 +156,47 @@ npm start           # serve the production build
 
 ## Testing summary
 
-- **Unit tests** (`tests/unit`): file/MIME/size validation, PDF magic-byte content checks, Zod schema validation (including rejection of malformed/oversized/fabricated-field AI output), prompt-injection heuristics, secret redaction, rate limiting, and a component test asserting risk badges always pair color with a text label.
-- **Integration tests** (`tests/unit/api-routes.test.ts`): the `/api/ask` and `/api/analyze` route handlers directly — demo Q&A without any AI call, rejection of empty questions, rejection of a live request with no document session, malformed JSON, missing files, non-PDF files, and files that merely *look* like PDFs by extension.
+- **Unit tests** (`tests/unit`): file/MIME/size validation, PDF magic-byte content checks, Zod schema validation (including rejection of malformed/oversized/fabricated-field AI output), prompt-injection heuristics, secret redaction, rate limiting, deterministic risk-count derivation (`lib/ai/derive.ts`), transient-vs-permanent error classification, the Vertex inline-mode size cap, and a component test asserting risk badges always pair color with a text label.
+- **Integration tests** (`tests/unit/api-routes.test.ts`): the `/api/ask` and `/api/analyze` route handlers directly, with the Gemini client mocked to assert it is **never called** for demo questions, empty questions, a missing document reference, or an invalid/non-PDF file — plus malformed JSON, missing files, and files that merely *look* like PDFs by extension.
+- **Component test** (`tests/unit/ask-ai-panel.test.tsx`): three rapid clicks on a suggested-question button while a request is in flight produce exactly one `fetch` call.
 - **E2E tests** (`tests/e2e/demo-flow.spec.ts`, Playwright, desktop + mobile viewports): the full demo golden path — landing → try the demo → overview (risk radar, clauses) → clause detail dialog → risks with evidence → obligations/rights tables → Ask AI with evidence → compare demo → keyboard-only activation of the primary CTA → mobile drawer navigation → no horizontal overflow on mobile.
 - **Accessibility tests** (`tests/e2e/accessibility.spec.ts`): automated `axe-core` scans of the landing page, the analyze overview, and an open clause-detail dialog, asserting zero serious/critical violations.
 
-## Efficiency
+## Efficiency Architecture
 
-- On the direct Gemini API, the PDF is uploaded to the Files API **once** per document; every follow-up question or comparison call references it by URI instead of re-sending the file. (Vertex AI has no equivalent, so that path resends the size-capped document inline — a deliberate, documented trade-off rather than adding a GCS bucket.)
-- No server-side database or session store — the client holds the validated analysis and document reference in `sessionStorage`, keeping the server stateless and cheap to run on Vercel's serverless functions (and correct: per-route in-memory state doesn't reliably survive across Vercel's separate serverless function instances).
-- No external icon library; a small set of hand-drawn inline SVGs keeps the client bundle lean (first-load JS ≈103–117 kB per route).
-- Demo mode does zero AI calls, so evaluators can explore the entire feature set instantly and at no cost.
+**One-time upload, reusable reference.** On the direct Gemini API, the PDF is uploaded to the Files API **once** per document; every follow-up question or comparison call references it by URI instead of re-sending the file bytes. Vertex AI has no Files API without a separate GCS bucket, so that path sends the document inline instead — a deliberate, documented trade-off (see below) rather than adding storage infrastructure for a hackathon-scale app.
+
+**One structured analysis call, everything else derived locally.** A single `generateContent` call extracts the full structured analysis (metadata, clauses, obligations, rights, risks, summary, suggested questions, lawyer-prep items) in one pass. The model is **not** asked to count or aggregate its own output — `riskSummary`'s clause counts (`high`/`medium`/`low`/`totalClauses`) are computed deterministically server-side from the validated clause list (`lib/ai/derive.ts`), never trusted from the model. This was a concrete, verified bug fix, not a hypothetical: the hand-authored demo data originally claimed `medium: 4, low: 1` while its actual clause list broke down as `medium: 3, low: 2` — exactly the kind of silent drift that asking an LLM to do arithmetic on its own output invites. The demo data now computes the same way production does, from one source of truth.
+
+**Bounded AI output.** Every array the model can return is capped to keep both token usage and response payload size predictable: clauses ≤25, obligations ≤25, rights ≤20, risks ≤20, suggested questions ≤8, lawyer-prep items ≤10, Q&A evidence citations ≤6. These are enforced by Zod (`lib/validation/schemas.ts`) regardless of what the model actually returns.
+
+**Payload-size safety, not just a best effort.** Vercel documents a 4.5 MB request/response body limit for serverless functions. The direct-API path never round-trips PDF bytes (only a small file-URI reference), so this isn't a concern there — but Vertex AI's inline path does carry the document as base64 in both the `/api/analyze` response and every follow-up request. `lib/ai/gemini.ts` enforces a much stricter `MAX_INLINE_FILE_SIZE_BYTES` (3 MB, chosen so base64's ~1.37x inflation plus the JSON envelope stays comfortably under 4.5 MB) for that path specifically, rejected with a clear `400` **before** any bytes are encoded or sent — not a silent failure discovered only under load.
+
+**No server-side session store — deliberately, after getting it wrong once.** An earlier version of this app kept the document reference in an in-memory `Map` on the server, keyed by session id. That works in one long-lived dev process but silently breaks in production on Vercel, where `/api/analyze` and `/api/ask` can run as entirely separate serverless function instances with no shared memory — a real bug caught by testing against the live deployment, not by inspection. The document reference is instead round-tripped through the client (`sessionStorage`) and re-validated server-side on every request via `documentRefSchema` (a `file` reference must point at Google's own API host; an `inline` payload is size-capped as above) — stateless, correct, and the reason `handleApiError` needed no new "session expired" error class.
+
+**Retry only what's actually transient.** `withTransientRetry` retries a bounded number of times with exponential backoff, but only for errors that look like `503`/`429`/"high demand" (`isTransientError`, unit-tested directly against both transient and permanent — 404, 403 — error shapes). A malformed-input or auth error fails immediately rather than wasting three round-trips finding that out.
+
+**No accidental double-submission.** Every action that triggers a model call — the primary Ask AI input, every suggested-question button, and the "suggested next question" follow-up — disables itself for the duration of the in-flight request (not just a state-flag check, an actual disabled DOM button), verified by a test that fires three rapid clicks and asserts exactly one `fetch` call.
+
+**Extended "thinking" disabled for extraction tasks.** Gemini 2.5's extended reasoning mode is on by default and adds significant latency for what is structured extraction, not open-ended reasoning — `thinkingConfig.thinkingBudget: 0` cut a real-document analysis from ~147s to ~66s in local testing (further reduced to ~24s once the `parties` cap fix below stopped triggering the repair-retry path). These are development-time measurements against one real document on one Gemini backend, not a formal benchmark.
+
+**Lean client, no premature complexity.** No external chart or icon library (inline SVGs; first-load JS ≈103–117 kB per route via Next.js's automatic per-route code splitting — already small enough that manual `dynamic()` imports would add complexity without a measurable win). Clause filtering/search/pagination is `useMemo`-derived from one source-of-truth `analysis` object in React context — never duplicated across multiple states. Demo mode makes **zero** AI calls (verified by a test asserting the mocked Gemini client is never invoked for a demo question), so evaluating the full feature set costs nothing and never times out.
+
+**Reject early, before spending a token.** File type, PDF magic bytes, size, and (in Vertex/inline mode) the stricter size cap are all checked before any bytes reach the model — verified by tests asserting the (mocked) Gemini client is never called for an invalid file.
+
+### Efficiency audit (Attempt 2)
+
+| Issue found | Location | Fix |
+|---|---|---|
+| Model asked to count its own clauses into `riskSummary`, and got it wrong in at least one case (demo data drift) | `lib/ai/prompts.ts`, `app/api/analyze/route.ts` | Compute counts from the validated clause list server-side (`lib/ai/derive.ts`); model now only supplies a qualitative takeaway |
+| No upper bound tight enough to keep responses small and fast | `lib/validation/schemas.ts` | Tightened clause/obligation/rights/risks/question/evidence array caps (60→25/25/20/20, 12→8, 10→6) |
+| Vertex AI's inline (no-Files-API) path could in principle return/accept a payload near Vercel's 4.5 MB function limit | `lib/ai/gemini.ts` | Added `MAX_INLINE_FILE_SIZE_BYTES` (3 MB) with an early, explicit rejection — not discovered only in production |
+| Extended model "thinking" added ~2x latency for a structured-extraction task | `lib/ai/gemini.ts` | `thinkingConfig.thinkingBudget: 0` |
+| Suggested-question buttons stayed clickable mid-request | `components/ask-ai-panel.tsx` | `disabled={loading}` on every action that triggers a model call |
+| No test proved demo mode / invalid input never reach the model | `tests/unit/api-routes.test.ts` | Mocked the Gemini client and asserted `not.toHaveBeenCalled()` in those paths |
+| Dev-only regressions in latency were invisible without manually timing | `lib/dev/perf.ts` | Lightweight `timed()` wrapper around each AI call, logged only outside production |
+
+Not changed, and why: **Q&A doesn't pre-classify the question to fetch a "minimal" context** — doing so would add a second model call (a classification round-trip) to save re-sending a file *reference* that's already just a URI on the direct-API path; that's a net loss, not a win, for the backend actually deployed to production. **Vertex AI support wasn't removed** despite being the less-efficient path — it's a working, tested, documented backend choice for users with Vertex billing/credits, not dead code; the fix was to make it fail safely at its actual limits, not to delete it.
 
 ## Deployment
 
@@ -178,6 +208,6 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md).
 - Extraction quality depends on the underlying model and on how the source PDF is structured (scanned/image-only PDFs with no extractable text may yield weaker results).
 - The demo dataset is intentionally tiny and does not cover every possible question.
 - This is a single-region, in-memory rate limiter appropriate for a single Vercel deployment — not a distributed rate-limiting solution.
-- On Vertex AI, the document is sent inline (base64) with the initial upload's browser response and resent on every follow-up call, since Vertex's Gemini endpoint has no Files API equivalent without a separate GCS bucket; this is bounded by the existing 15 MB file cap but is less efficient than the direct API's file-reuse path, and holds more data in the browser's `sessionStorage` for that tab.
+- On Vertex AI, the document is sent inline (base64) with the initial upload's browser response and resent on every follow-up call, since Vertex's Gemini endpoint has no Files API equivalent without a separate GCS bucket. That path is capped at 3 MB (not the direct API's 15 MB) to stay safely under Vercel's 4.5 MB function payload limit, is less efficient than the direct API's file-reuse path, and holds more data in the browser's `sessionStorage` for that tab.
 - `GEMINI_MODEL` availability differs between the direct Gemini API and Vertex AI (a model enabled on one may 404 on the other, or be deprecated for new API keys on one but not the other) — verify your chosen model against the backend you're using.
 - Full document analysis of a real, content-dense PDF can take 30-90+ seconds (extended model "thinking" is explicitly disabled via `thinkingConfig.thinkingBudget: 0` to keep this as fast as possible for a structured-extraction task, and transient `503`/`429` errors are retried with backoff). `/api/analyze` and `/api/compare` set `maxDuration = 120`; Vercel's Hobby plan hard-caps serverless functions at 60 seconds regardless of this setting, so a slow analysis can time out (504) on Hobby even though it would succeed on Pro (up to 300s) or with Fluid Compute. If you see intermittent 504s on a complex document, this is why.

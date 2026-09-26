@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { AiConfigError, AiOutputError, AiRequestError } from "@/lib/ai/gemini";
+import { AiConfigError, AiOutputError, AiRequestError, DocumentTooLargeForBackendError } from "@/lib/ai/gemini";
 
 export function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
@@ -7,6 +7,9 @@ export function errorResponse(message: string, status: number) {
 
 /** Maps internal errors to safe, user-facing messages — never leaks stack traces or internals. */
 export function handleApiError(err: unknown) {
+  if (err instanceof DocumentTooLargeForBackendError) {
+    return errorResponse(err.message, 400);
+  }
   if (err instanceof AiConfigError) {
     return errorResponse(
       "Live AI mode is not configured on this server. Try demo mode, or set GEMINI_API_KEY (or GOOGLE_CLOUD_PROJECT for Vertex AI).",

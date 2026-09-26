@@ -1,7 +1,16 @@
 import { z } from "zod";
 
 const GEMINI_FILE_URI_PREFIX = "https://generativelanguage.googleapis.com/";
-const MAX_INLINE_BASE64_LENGTH = Math.ceil((16 * 1024 * 1024 * 4) / 3); // ~16 MB decoded, base64-inflated
+
+/**
+ * Vertex AI has no Files API, so its documents travel inline (base64) in the
+ * request/response body instead of by reference. Vercel serverless functions
+ * hard-cap request/response bodies at 4.5 MB, so this must stay well under
+ * that once base64's ~1.37x inflation and the surrounding JSON are accounted
+ * for — see MAX_INLINE_FILE_SIZE_BYTES in lib/ai/gemini.ts for the matching
+ * pre-encoding size check.
+ */
+const MAX_INLINE_BASE64_LENGTH = Math.ceil((3 * 1024 * 1024 * 4) / 3); // ~3 MB decoded, base64-inflated
 
 /**
  * A reference to an already-uploaded document, round-tripped through the
@@ -91,11 +100,23 @@ export const documentMetadataSchema = z.object({
   jurisdiction: z.string().max(120).nullable(),
 });
 
+/**
+ * Full risk summary as stored in DocumentAnalysis. The counts are never
+ * trusted from the model (see aiRiskSummarySchema below) — they're derived
+ * deterministically from the validated clauses array in
+ * app/api/analyze/route.ts via lib/ai/derive.ts's computeRiskSummary, so
+ * they can never drift from what the UI actually renders.
+ */
 export const riskSummarySchema = z.object({
   totalClauses: z.number().int().nonnegative(),
   high: z.number().int().nonnegative(),
   medium: z.number().int().nonnegative(),
   low: z.number().int().nonnegative(),
+  keyTakeaway: z.string().min(1).max(500),
+});
+
+/** What we actually ask the model for: a qualitative takeaway, not arithmetic. */
+export const aiRiskSummarySchema = z.object({
   keyTakeaway: z.string().min(1).max(500),
 });
 
@@ -114,19 +135,19 @@ export const lawyerPrepItemSchema = z.object({
 export const analysisSchema = z.object({
   metadata: documentMetadataSchema,
   summary: z.string().min(1).max(2000),
-  clauses: z.array(legalClauseSchema).max(60),
-  obligations: z.array(obligationSchema).max(60),
-  rights: z.array(rightSchema).max(60),
-  risks: z.array(riskFindingSchema).max(60),
-  riskSummary: riskSummarySchema,
-  suggestedQuestions: z.array(suggestedQuestionSchema).max(12),
-  lawyerPrep: z.array(lawyerPrepItemSchema).max(20),
+  clauses: z.array(legalClauseSchema).max(25),
+  obligations: z.array(obligationSchema).max(25),
+  rights: z.array(rightSchema).max(20),
+  risks: z.array(riskFindingSchema).max(20),
+  riskSummary: aiRiskSummarySchema,
+  suggestedQuestions: z.array(suggestedQuestionSchema).max(8),
+  lawyerPrep: z.array(lawyerPrepItemSchema).max(10),
 });
 
 export const qaSchema = z.object({
   answer: z.string().min(1).max(2000),
   whatDocumentSays: z.string().min(1).max(1500),
-  evidence: z.array(evidenceCitationSchema).max(10),
+  evidence: z.array(evidenceCitationSchema).max(6),
   uncertainty: z.string().max(600).nullable(),
   suggestedNextQuestion: z.string().max(300).nullable(),
   confidence: confidenceSchema,
@@ -151,11 +172,6 @@ export const materialDifferenceSchema = z.object({
 export const comparisonSchema = z.object({
   rows: z.array(comparisonRowSchema).max(20),
   materialDifferences: z.array(materialDifferenceSchema).max(20),
-});
-
-export const askRequestSchema = z.object({
-  sessionId: z.string().min(1).max(200),
-  question: z.string().min(1).max(500),
 });
 
 export const uploadValidationSchema = z.object({

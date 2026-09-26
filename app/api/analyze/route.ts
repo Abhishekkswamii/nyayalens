@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateAnalysis, prepareDocument } from "@/lib/ai/gemini";
+import { computeRiskSummary } from "@/lib/ai/derive";
 import { buildAnalysisPrompt } from "@/lib/ai/prompts";
 import { validateFileMetadata, validatePdfMagicBytes } from "@/lib/document/validate";
+import { timed } from "@/lib/dev/perf";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
 import { analysisSchema } from "@/lib/validation/schemas";
 import { errorResponse, generateId, handleApiError } from "@/lib/api/respond";
@@ -45,8 +47,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const doc = await prepareDocument(bytes, file.name);
-    const aiResult = await generateAnalysis(doc, buildAnalysisPrompt(), analysisSchema);
+    const doc = await timed("prepareDocument", () => prepareDocument(bytes, file.name));
+    const aiResult = await timed("generateAnalysis", () =>
+      generateAnalysis(doc, buildAnalysisPrompt(), analysisSchema),
+    );
 
     const analysis: DocumentAnalysis = {
       sessionId: generateId("session"),
@@ -59,7 +63,9 @@ export async function POST(request: NextRequest) {
       obligations: aiResult.obligations,
       rights: aiResult.rights,
       risks: aiResult.risks,
-      riskSummary: aiResult.riskSummary,
+      // Counts are derived from the validated clause list, never trusted from
+      // the model's own arithmetic — see lib/ai/derive.ts.
+      riskSummary: computeRiskSummary(aiResult.clauses, aiResult.riskSummary.keyTakeaway),
       suggestedQuestions: aiResult.suggestedQuestions,
       lawyerPrep: aiResult.lawyerPrep,
       isDemo: false,
