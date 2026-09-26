@@ -1,4 +1,12 @@
+import { MAX_COMBINED_COMPARE_BYTES } from "@/lib/document/limits";
 import type { ComparisonResult } from "@/lib/types";
+
+export function validateCombinedCompareSize(fileA: File, fileB: File): string | null {
+  if (fileA.size + fileB.size > MAX_COMBINED_COMPARE_BYTES) {
+    return "Both files together must be 4 MB or smaller, since they travel in a single request.";
+  }
+  return null;
+}
 
 export async function compareDocuments(fileA: File, fileB: File): Promise<ComparisonResult> {
   const formData = new FormData();

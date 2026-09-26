@@ -133,7 +133,7 @@ export function UploadCard() {
             if (selected) pickFile(selected);
           }}
         />
-        <p className="mt-3 text-xs text-muted">PDF only, up to 15 MB.</p>
+        <p className="mt-3 text-xs text-muted">PDF only, up to 4 MB.</p>
       </div>
 
       {error && (

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { CompareIcon, UploadIcon } from "@/components/icons";
 import { EmptyState } from "@/components/empty-state";
 import { EvidenceDrawer } from "@/components/evidence-drawer";
-import { compareDocuments } from "@/lib/client/compare-client";
+import { compareDocuments, validateCombinedCompareSize } from "@/lib/client/compare-client";
 import { validateClientFile } from "@/lib/client/analyze-client";
 import { DEMO_COMPARISON } from "@/lib/demo/sample-data";
 import type { ComparisonResult, EvidenceCitation } from "@/lib/types";
@@ -22,7 +22,7 @@ function FilePicker({
     <label className="flex flex-1 cursor-pointer flex-col items-center gap-2 rounded-card border-2 border-dashed border-border bg-surface px-4 py-8 text-center hover:border-gold-dark">
       <UploadIcon className="h-6 w-6 text-gold-dark" />
       <span className="text-sm font-medium text-ink">{label}</span>
-      <span className="max-w-full truncate text-xs text-muted">{file ? file.name : "PDF, up to 15 MB"}</span>
+      <span className="max-w-full truncate text-xs text-muted">{file ? file.name : "PDF, combined up to 4 MB"}</span>
       <input
         type="file"
         accept="application/pdf,.pdf"
@@ -50,8 +50,9 @@ export function CompareWorkspace() {
     if (!fileA || !fileB) return;
     const errA = validateClientFile(fileA);
     const errB = validateClientFile(fileB);
-    if (errA || errB) {
-      setError(errA ?? errB);
+    const combinedErr = validateCombinedCompareSize(fileA, fileB);
+    if (errA || errB || combinedErr) {
+      setError(errA ?? errB ?? combinedErr);
       return;
     }
     setLoading(true);

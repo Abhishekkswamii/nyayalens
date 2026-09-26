@@ -26,7 +26,7 @@ describe("validateFileMetadata", () => {
       size: MAX_FILE_SIZE_BYTES + 1,
     });
     expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/15 MB/i);
+    expect(result.error).toMatch(/4 MB/i);
   });
 
   it("rejects a file with no name", () => {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_FILE_SIZE_BYTES } from "@/lib/document/limits";
 
 const GEMINI_FILE_URI_PREFIX = "https://generativelanguage.googleapis.com/";
 
@@ -181,7 +182,7 @@ export const uploadValidationSchema = z.object({
     .number()
     .int()
     .positive()
-    .max(15 * 1024 * 1024, "File must be 15 MB or smaller."),
+    .max(MAX_FILE_SIZE_BYTES, "File must be 4 MB or smaller."),
 });
 
 export type AnalysisAIResponse = z.infer<typeof analysisSchema>;

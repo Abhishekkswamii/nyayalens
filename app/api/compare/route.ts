@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateComparison, prepareDocument } from "@/lib/ai/gemini";
 import { buildComparisonPrompt } from "@/lib/ai/prompts";
-import { validateFileMetadata, validatePdfMagicBytes } from "@/lib/document/validate";
+import { MAX_COMBINED_COMPARE_BYTES, validateFileMetadata, validatePdfMagicBytes } from "@/lib/document/validate";
 import { timed } from "@/lib/dev/perf";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
 import { comparisonSchema } from "@/lib/validation/schemas";
@@ -39,6 +39,13 @@ export async function POST(request: NextRequest) {
     if (!check.valid) {
       return errorResponse(check.error ?? "Invalid file.", 400);
     }
+  }
+
+  // Both files share a single request body — bounded by the same ~4.5 MB
+  // Vercel function payload limit as any other upload — so the combined
+  // total, not just each file individually, must stay within budget.
+  if (fileA.size + fileB.size > MAX_COMBINED_COMPARE_BYTES) {
+    return errorResponse("Both files together must be 4 MB or smaller, since they travel in a single request.", 400);
   }
 
   try {

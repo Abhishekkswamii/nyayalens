@@ -88,7 +88,7 @@ export const MAX_INLINE_FILE_SIZE_BYTES = 3 * 1024 * 1024;
 export function assertInlineSizeAllowed(byteLength: number): void {
   if (byteLength > MAX_INLINE_FILE_SIZE_BYTES) {
     throw new DocumentTooLargeForBackendError(
-      `This file is too large for the currently configured AI backend (Vertex AI inline mode supports files up to ${Math.floor(MAX_INLINE_FILE_SIZE_BYTES / (1024 * 1024))} MB, since the document has no Files API equivalent there and must travel with each request). Use a smaller file, or configure the direct Gemini API (GEMINI_API_KEY) for files up to 15 MB.`,
+      `This file is too large for the currently configured AI backend (Vertex AI inline mode supports files up to ${Math.floor(MAX_INLINE_FILE_SIZE_BYTES / (1024 * 1024))} MB, since the document has no Files API equivalent there and must travel with each request). Use a smaller file, or configure the direct Gemini API (GEMINI_API_KEY) instead.`,
     );
   }
 }

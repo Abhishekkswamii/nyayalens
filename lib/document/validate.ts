@@ -1,6 +1,11 @@
 import { uploadValidationSchema } from "@/lib/validation/schemas";
 
-export const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
+// Re-exported for existing importers; new code should prefer importing
+// straight from lib/document/limits.ts, which has no Zod dependency and is
+// safe to use from client components without bloating the client bundle.
+export { MAX_FILE_SIZE_BYTES, MAX_COMBINED_COMPARE_BYTES } from "@/lib/document/limits";
+import { MAX_FILE_SIZE_BYTES } from "@/lib/document/limits";
+
 export const ALLOWED_MIME_TYPE = "application/pdf";
 const PDF_MAGIC_BYTES = [0x25, 0x50, 0x44, 0x46]; // %PDF
 
@@ -25,7 +30,7 @@ export function validateFileMetadata(file: {
     return { valid: false, error: "Only PDF files are supported." };
   }
   if (file.size > MAX_FILE_SIZE_BYTES) {
-    return { valid: false, error: "File must be 15 MB or smaller." };
+    return { valid: false, error: "File must be 4 MB or smaller." };
   }
 
   const parsed = uploadValidationSchema.safeParse({

@@ -13,7 +13,7 @@ const FAQ = [
   },
   {
     q: "What file types are supported?",
-    a: "PDF only, up to 15 MB, in this version.",
+    a: "PDF only, up to 4 MB, in this version (a Vercel platform limit on upload size — see the README for details).",
   },
   {
     q: "Can I try it without an API key configured?",
